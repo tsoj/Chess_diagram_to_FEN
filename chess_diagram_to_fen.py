@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import chess
 import argparse
 import random
+import os
 from PIL import Image
 from pathlib import Path
 from src.bounding_box.model import ChessBoardBBox
@@ -14,7 +15,7 @@ import src.fen_recognition.dataset as fen_dataset
 from src.bounding_box.inference import get_bbox
 from src import consts, common
 
-device = torch.device("cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class SomeModel:
@@ -47,15 +48,19 @@ class SomeModel:
         self.model_path = model_path
 
 
+script_dir = os.path.abspath(os.path.dirname(__file__))
+
 bbox_model = SomeModel(
-    ChessBoardBBox, default_path="models/best_model_bbox_0.958_2024-01-28-22-49-40.pth"
+    ChessBoardBBox,
+    script_dir + "/models/best_model_bbox_0.958_2024-01-28-22-49-40.pth",
 )
 fen_model = SomeModel(
-    ChessRec, default_path="models/best_model_fen_0.953_2024-02-03-13-49-31.pth"
+    ChessRec,
+    script_dir + "/models/best_model_fen_0.953_2024-02-03-13-49-31.pth",
 )
 orientation_model = SomeModel(
     OrientationModel,
-    default_path="models/best_model_orientation_0.987_2024-02-04-17-34-05.pth",
+    script_dir + "/models/best_model_orientation_0.987_2024-02-04-17-34-05.pth",
 )
 
 
