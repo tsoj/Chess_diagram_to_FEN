@@ -6,7 +6,7 @@ Extract the FEN out of images of chess diagrams.
 
 0. (Optional) It is suggested to use a conda environment.
 1. Install [PyTorch](https://pytorch.org/get-started/locally/) (e.g. `pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu`, but CUDA and ROCm should also both work fine).
-2. Download and install `Chess_diagram_to_FEN` package:
+2. Download and install the `Chess_diagram_to_FEN` package:
 ```shell
 git clone "https://github.com/tsoj/Chess_diagram_to_FEN.git"
 # Or use as git submodule
