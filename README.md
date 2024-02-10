@@ -19,7 +19,7 @@ pip install ./Chess_diagram_to_FEN
 
 ```python
 from PIL import Image
-from chess_diagram_to_fen import get_fen
+from Chess_diagram_to_FEN.chess_diagram_to_fen import get_fen
 
 img = Image.open("your_image.jpg")
 fen = get_fen(img=img, num_tries=10, return_cropped_img=False, auto_rotate=True)
