@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "Chess_diagram_to_FEN"
@@ -17,8 +17,8 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-  "matplotlib ~= 3.7.4",
-  "scikit-image ~= 0.21.0",
+  "matplotlib ~= 3.8.2",
+  "scikit-image ~= 0.22.0",
   "tqdm ~= 4.66.1",
   "python-chess ~= 1.999",
   "cairosvg ~= 2.7.1",
