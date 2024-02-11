@@ -12,7 +12,7 @@ git clone "https://github.com/tsoj/Chess_diagram_to_FEN.git"
 # Or use as git submodule
 # git submodule add "https://github.com/tsoj/Chess_diagram_to_FEN"
 
-pip install ./Chess_diagram_to_FEN
+pip install -e ./Chess_diagram_to_FEN
 ```
 
 ## Usage
