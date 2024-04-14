@@ -10,7 +10,9 @@ from pathlib import Path
 from src.bounding_box.model import ChessBoardBBox
 from src.fen_recognition.model import ChessRec
 from src.board_orientation.model import OrientationModel
+from src.board_image_rotation.model import ImageRotation
 import src.fen_recognition.dataset as fen_dataset
+import src.board_image_rotation.dataset as rotation_dataset
 
 from src.bounding_box.inference import get_bbox
 from src import consts, common
@@ -53,6 +55,10 @@ script_dir = os.path.abspath(os.path.dirname(__file__))
 bbox_model = SomeModel(
     ChessBoardBBox,
     script_dir + "/models/best_model_bbox_0.958_2024-01-28-22-49-40.pth",
+)
+image_rotation_model = SomeModel(
+    ImageRotation,
+    script_dir + "/models/best_model_image_rotation_0.996_2024-04-14-22-59-55.pth",
 )
 fen_model = SomeModel(
     ChessRec,
@@ -121,7 +127,15 @@ def crop_to_chessboard(img: Image.Image, max_num_tries=10) -> Image.Image:
 
 
 @torch.no_grad()
-def rotate_if_necessary(board: chess.Board, no_rotate_bias=0.2) -> chess.Board:
+def rotate_board_image_if_necessary(img: Image.Image) -> Image.Image:
+    input_img = common.to_rgb_tensor(img)
+    input_img = rotation_dataset.default_transforms(input_img).to(device)
+    pred = image_rotation_model.get()(input_img.unsqueeze(0)).cpu().squeeze(0).argmax().item()
+    return img.rotate(-rotation_dataset.ROTATIONS[pred])
+
+
+@torch.no_grad()
+def rotate_position_if_necessary(board: chess.Board, no_rotate_bias=0.2) -> chess.Board:
     board_tensor = common.chess_board_to_tensor(board)
     output = (
         orientation_model.get()(board_tensor.unsqueeze(0).to(device)).squeeze(0).cpu()
@@ -179,7 +193,13 @@ def get_board_from_cropped_img(img: Image.Image, num_tries=20) -> chess.Board:
     return board
 
 
-def get_fen(img: Image.Image, num_tries=10, return_cropped_img=False, auto_rotate=True):
+def get_fen(
+    img: Image.Image,
+    num_tries=10,
+    return_cropped_img=False,
+    auto_rotate_image=True,
+    auto_rotate_board=True,
+):
     """Takes an image and returns an FEN (Forsyth–Edwards Notation) string.
 
     Args:
@@ -187,7 +207,9 @@ def get_fen(img: Image.Image, num_tries=10, return_cropped_img=False, auto_rotat
         - `num_tries (int)`: The more higher this number is, the more accurate the returned FEN will be, with diminishing returns.
         - `return_cropped_img (bool)`: If this is set to `True`, this function will return a tuple [`str`, `Image`] where the image is
         the input image cropped to the chess diagram.
-        - `auto_rotate (bool)`: If this is set to `True`, this function will try to guess if the diagram is from whites or blacks
+        - `auto_rotate_image (bool)`: If this is set to `True`, this function will try to guess if the image is rotated 0°, 90°, 180°,
+        or 270° and rotate the image accordingly.
+        - `auto_rotate_board (bool)`: If this is set to `True`, this function will try to guess if the diagram is from whites or blacks
         perspective and rotate the board accordingly.
 
     Returns:
@@ -199,13 +221,15 @@ def get_fen(img: Image.Image, num_tries=10, return_cropped_img=False, auto_rotat
 
     img = img.convert("RGB")
     img = crop_to_chessboard(img, max_num_tries=num_tries)
+    if auto_rotate_image:
+        img = rotate_board_image_if_necessary(img)
 
     if img is not None:
         board = get_board_from_cropped_img(img, num_tries=num_tries)
 
         if board is not None:
-            if auto_rotate:
-                board = rotate_if_necessary(board)
+            if auto_rotate_board:
+                board = rotate_position_if_necessary(board)
 
             fen = board.fen()
 
@@ -242,6 +266,9 @@ def demo(root_dir: str, shuffle_files: bool):
         print(file_name)
 
         img = Image.open(file_name).convert("RGB")
+
+        img = img.rotate(random.choice(rotation_dataset.ROTATIONS))
+
         fen, cropped = get_fen(img, return_cropped_img=True)
 
         if fen is None:
