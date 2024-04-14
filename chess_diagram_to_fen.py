@@ -237,7 +237,7 @@ def get_fen(
 
     img = img.convert("RGB")
     img = crop_to_chessboard(img, max_num_tries=num_tries)
-    if auto_rotate_image:
+    if auto_rotate_image and img is not None:
         img = rotate_board_image_if_necessary(img, mirror_when_180_rotation)
 
     if img is not None:
