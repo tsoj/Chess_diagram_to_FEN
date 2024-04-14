@@ -5,7 +5,7 @@ import chess
 import argparse
 import random
 import os
-from PIL import Image
+from PIL import Image, ImageOps
 from pathlib import Path
 from src.bounding_box.model import ChessBoardBBox
 from src.fen_recognition.model import ChessRec
@@ -127,11 +127,24 @@ def crop_to_chessboard(img: Image.Image, max_num_tries=10) -> Image.Image:
 
 
 @torch.no_grad()
-def rotate_board_image_if_necessary(img: Image.Image) -> Image.Image:
+def rotate_board_image_if_necessary(
+    img: Image.Image, mirror_when_180_rotation
+) -> Image.Image:
     input_img = common.to_rgb_tensor(img)
     input_img = rotation_dataset.default_transforms(input_img).to(device)
-    pred = image_rotation_model.get()(input_img.unsqueeze(0)).cpu().squeeze(0).argmax().item()
-    return img.rotate(-rotation_dataset.ROTATIONS[pred])
+    pred = (
+        image_rotation_model.get()(input_img.unsqueeze(0))
+        .cpu()
+        .squeeze(0)
+        .argmax()
+        .item()
+    )
+    img = img.rotate(-rotation_dataset.ROTATIONS[pred])
+
+    if rotation_dataset.ROTATIONS[pred] == 180 and mirror_when_180_rotation:
+        img = ImageOps.mirror(img)
+
+    return img
 
 
 @torch.no_grad()
@@ -198,9 +211,10 @@ def get_fen(
     num_tries=10,
     return_cropped_img=False,
     auto_rotate_image=True,
+    mirror_when_180_rotation=False,
     auto_rotate_board=True,
 ):
-    """Takes an image and returns an FEN (Forsyth–Edwards Notation) string.
+    """Takes an image and returns an FEN (Forsyth-Edwards Notation) string.
 
     Args:
         - `img (PIL.Image.Image)`: The image of a chess diagram.
@@ -209,6 +223,8 @@ def get_fen(
         the input image cropped to the chess diagram.
         - `auto_rotate_image (bool)`: If this is set to `True`, this function will try to guess if the image is rotated 0°, 90°, 180°,
         or 270° and rotate the image accordingly.
+        - `mirror_when_180_rotation (bool)`: If this  and `auto_rotate_image` is set to `True`, this function will also mirror the image
+        (left to right) if it was rotated 180°.
         - `auto_rotate_board (bool)`: If this is set to `True`, this function will try to guess if the diagram is from whites or blacks
         perspective and rotate the board accordingly.
 
@@ -222,7 +238,7 @@ def get_fen(
     img = img.convert("RGB")
     img = crop_to_chessboard(img, max_num_tries=num_tries)
     if auto_rotate_image:
-        img = rotate_board_image_if_necessary(img)
+        img = rotate_board_image_if_necessary(img, mirror_when_180_rotation)
 
     if img is not None:
         board = get_board_from_cropped_img(img, num_tries=num_tries)
