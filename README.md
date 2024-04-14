@@ -22,7 +22,13 @@ from PIL import Image
 from Chess_diagram_to_FEN.chess_diagram_to_fen import get_fen
 
 img = Image.open("your_image.jpg")
-fen = get_fen(img=img, num_tries=10, return_cropped_img=False, auto_rotate_image=True, auto_rotate_board=True)
+fen = get_fen(
+    img=img,
+    num_tries=10,
+    return_cropped_img=False,
+    auto_rotate_image=True,
+    auto_rotate_board=True
+)
 
 print(fen)
 ```
@@ -66,6 +72,7 @@ python main.py dataset image_rotation
 python main.py train bbox
 python main.py train fen
 python main.py train orientation
+python main.py train image_rotation
 ```
 
 #### Evaluate (optional)
@@ -73,6 +80,7 @@ python main.py train orientation
 ```shell
 python main.py eval fen
 python main.py eval orientation
+python main.py eval image_rotation
 ```
 
 ## Examples
