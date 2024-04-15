@@ -83,7 +83,7 @@ class BoardImageDataset(Dataset):
 
         target = random.randint(0, len(ROTATIONS) - 1)
 
-        img = img.rotate(ROTATIONS[target])
+        img = img.rotate(ROTATIONS[target], expand=True)
 
         input_img = common.to_rgb_tensor(img).to(self.device)
 

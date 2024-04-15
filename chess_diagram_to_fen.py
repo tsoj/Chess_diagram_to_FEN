@@ -5,6 +5,7 @@ import chess
 import argparse
 import random
 import os
+from dataclasses import dataclass
 from PIL import Image, ImageOps
 from pathlib import Path
 from src.bounding_box.model import ChessBoardBBox
@@ -16,6 +17,7 @@ import src.board_image_rotation.dataset as rotation_dataset
 
 from src.bounding_box.inference import get_bbox
 from src import consts, common
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -127,9 +129,7 @@ def crop_to_chessboard(img: Image.Image, max_num_tries=10) -> Image.Image:
 
 
 @torch.no_grad()
-def rotate_board_image_if_necessary(
-    img: Image.Image, mirror_when_180_rotation
-) -> Image.Image:
+def board_image_rotation(img: Image.Image) -> int:
     input_img = common.to_rgb_tensor(img)
     input_img = rotation_dataset.default_transforms(input_img).to(device)
     pred = (
@@ -139,25 +139,23 @@ def rotate_board_image_if_necessary(
         .argmax()
         .item()
     )
-    img = img.rotate(-rotation_dataset.ROTATIONS[pred])
-
-    if rotation_dataset.ROTATIONS[pred] == 180 and mirror_when_180_rotation:
-        img = ImageOps.mirror(img)
-
-    return img
+    return pred
 
 
 @torch.no_grad()
-def rotate_position_if_necessary(board: chess.Board, no_rotate_bias=0.2) -> chess.Board:
+def is_board_flipped(board: chess.Board, no_rotate_bias=0.2) -> bool:
     board_tensor = common.chess_board_to_tensor(board)
     output = (
         orientation_model.get()(board_tensor.unsqueeze(0).to(device)).squeeze(0).cpu()
     )
 
-    if output.item() - no_rotate_bias > 0.5:
-        print("Rotating board:", output.item())
-        board_tensor = common.rotate_board_tensor(board_tensor)
+    return output.item() - no_rotate_bias > 0.5
 
+
+@torch.no_grad()
+def rotate_board(board: chess.Board) -> chess.Board:
+    board_tensor = common.chess_board_to_tensor(board)
+    board_tensor = common.rotate_board_tensor(board_tensor)
     return common.tensor_to_chess_board(board_tensor)
 
 
@@ -206,21 +204,26 @@ def get_board_from_cropped_img(img: Image.Image, num_tries=20) -> chess.Board:
     return board
 
 
+@dataclass
+class FenResult:
+    fen: str = None
+    cropped_image: Image = None
+    image_rotation_angle: int = None
+    board_is_flipped: bool = None
+
+
 def get_fen(
     img: Image.Image,
     num_tries=10,
-    return_cropped_img=False,
     auto_rotate_image=True,
     mirror_when_180_rotation=False,
     auto_rotate_board=True,
-):
+) -> FenResult:
     """Takes an image and returns an FEN (Forsyth-Edwards Notation) string.
 
     Args:
         - `img (PIL.Image.Image)`: The image of a chess diagram.
         - `num_tries (int)`: The more higher this number is, the more accurate the returned FEN will be, with diminishing returns.
-        - `return_cropped_img (bool)`: If this is set to `True`, this function will return a tuple [`str`, `Image`] where the image is
-        the input image cropped to the chess diagram.
         - `auto_rotate_image (bool)`: If this is set to `True`, this function will try to guess if the image is rotated 0°, 90°, 180°,
         or 270° and rotate the image accordingly.
         - `mirror_when_180_rotation (bool)`: If this  and `auto_rotate_image` is set to `True`, this function will also mirror the image
@@ -229,29 +232,40 @@ def get_fen(
         perspective and rotate the board accordingly.
 
     Returns:
-        - `[str | None, PIL.Image.Image] | str | None`: Returns the FEN, or if `return_cropped_img` is set to `True`, returns the FEN
-        and the image cropped to the chess diagram. If no chess diagram can be detected, the returned FEN will be `None`.
+        - `FenResult`: Returns a dataclass that contains the fields `fen`, `cropped_image`, `image_rotation_angle`, and `board_is_flipped`
     """
 
-    fen = None
+    result = FenResult()
 
     img = img.convert("RGB")
-    img = crop_to_chessboard(img, max_num_tries=num_tries)
-    if auto_rotate_image and img is not None:
-        img = rotate_board_image_if_necessary(img, mirror_when_180_rotation)
+    result.cropped_image = crop_to_chessboard(img, max_num_tries=num_tries)
+    if result.cropped_image is not None:
+        result.image_rotation_angle = board_image_rotation(result.cropped_image)
 
-    if img is not None:
-        board = get_board_from_cropped_img(img, num_tries=num_tries)
+        if auto_rotate_image:
+
+            result.cropped_image = result.cropped_image.rotate(
+                -rotation_dataset.ROTATIONS[result.image_rotation_angle], expand=True
+            )
+
+            if (
+                mirror_when_180_rotation
+                and rotation_dataset.ROTATIONS[result.image_rotation_angle] == 180
+            ):
+                result.cropped_image = ImageOps.mirror(result.cropped_image)
+
+        board = get_board_from_cropped_img(result.cropped_image, num_tries=num_tries)
 
         if board is not None:
-            if auto_rotate_board:
-                board = rotate_position_if_necessary(board)
 
-            fen = board.fen()
+            result.board_is_flipped = is_board_flipped(board)
 
-    if return_cropped_img:
-        return fen, img
-    return fen
+            if auto_rotate_board and result.board_is_flipped:
+                board = rotate_board(board)
+
+            result.fen = board.fen()
+
+    return result
 
 
 def demo(root_dir: str, shuffle_files: bool):
@@ -283,32 +297,32 @@ def demo(root_dir: str, shuffle_files: bool):
 
         img = Image.open(file_name).convert("RGB")
 
-        img = img.rotate(random.choice(rotation_dataset.ROTATIONS))
+        img = img.rotate(random.choice(rotation_dataset.ROTATIONS), expand=True)
 
-        fen, cropped = get_fen(img, return_cropped_img=True)
+        fen_result = get_fen(img)
 
-        if fen is None:
+        if fen_result.fen is None:
             print("Couldn't detect chessboard:", file_name)
             continue
 
-        print(fen)
+        print(fen_result.fen)
 
         true_fen = common.normalize_fen(Path(file_name).stem)
         if true_fen is None:
             print(f"WARNING: Couldn't find ground truth FEN")
         else:
-            if fen == true_fen:
+            if fen_result.fen == true_fen:
                 print("Correct")
             else:
                 print(true_fen)
                 print("WRONG")
 
-        fen_img = common.get_image(chess.Board(fen), width=512, height=512)
+        fen_img = common.get_image(chess.Board(fen_result.fen), width=512, height=512)
 
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(16, 8))
 
         ax1.imshow(img)
-        ax2.imshow(cropped)
+        ax2.imshow(fen_result.cropped_image)
         ax3.imshow(fen_img)
         ax1.axis("off")
         ax2.axis("off")

@@ -22,15 +22,14 @@ from PIL import Image
 from Chess_diagram_to_FEN.chess_diagram_to_fen import get_fen
 
 img = Image.open("your_image.jpg")
-fen = get_fen(
+result = get_fen(
     img=img,
     num_tries=10,
-    return_cropped_img=False,
     auto_rotate_image=True,
     auto_rotate_board=True
 )
 
-print(fen)
+print(result.fen)
 ```
 
 Or use the demo program:
@@ -94,6 +93,8 @@ python main.py eval image_rotation
 <img src="./resources/examples/success/success_3.jpg" width="600px" style="border-radius: 20px;">
 
 <img src="./resources/examples/success/success_4.jpg" width="600px" style="border-radius: 20px;">
+
+<img src="./resources/examples/success/success_5.jpg" width="600px" style="border-radius: 20px;">
 
 
 ### Failures
