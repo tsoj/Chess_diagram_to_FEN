@@ -39,6 +39,9 @@ class MinMaxMeanNormalization(torch.nn.Module):
             return torch.zeros_like(tensor)
         tensor = (tensor - min) / (max - min)
         tensor -= tensor.mean()
+        if torch.isnan(tensor).any():
+            print("WARNING: Encountered NaN in input for MinMaxMeanNormalization")
+            tensor = torch.zeros_like(tensor)
         assert tensor.mean().abs() < 0.0001, tensor.mean()
         assert 0.0 <= tensor.max() <= 1.0
         assert -1.0 <= tensor.min() <= 0.0
