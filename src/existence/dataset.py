@@ -4,20 +4,11 @@ import random
 import matplotlib.pyplot as plt
 from torch.utils.data import Dataset
 from torchvision.transforms import v2
-from torchvision.utils import draw_bounding_boxes
 from PIL import Image
 from pathlib import Path
 
 from src.common import to_rgb_tensor, MinMaxMeanNormalization, AddGaussianNoise
 from src import consts
-
-
-def box_to_mask(box: torch.Tensor):
-    # box should be in x1, y1, x2, y2 format and the values should be relative
-    mask = torch.zeros([consts.BBOX_IMAGE_SIZE, consts.BBOX_IMAGE_SIZE])
-    x1, y1, x2, y2 = box.to(int)
-    mask[y1:y2, x1:x2] = 1.0
-    return mask.unsqueeze(0)
 
 
 default_transforms = torch.nn.Sequential(
@@ -47,24 +38,49 @@ augment_transforms = torch.nn.Sequential(
     v2.RandomEqualize(p=0.8),
 )
 
-# TODO It could make sense to add affine augmentations, but it seems to work well, even without.
-# And I would need to add the affine transforms to the target mask as well.
+affine_transforms = v2.RandomAffine(
+    degrees=1.5, translate=(0.01, 0.01), scale=(0.99, 1.01), shear=1.5
+)
 
-
-class ChessBoardBBoxDataset(Dataset):
-    """Chess board bounding box dataset."""
+class ExistenceDataset(Dataset):
 
     def __init__(
-        self, root_dir, augment_ratio=0.5, max=None, device=torch.device("cpu")
+        self,
+        with_board_root_dir,
+        no_board_root_dir,
+        augment_ratio=0.5,
+        affine_augment_ratio=0.8,
+        max=None,
+        device=torch.device("cpu"),
     ):
 
         self.device = device
         self.augment_ratio = augment_ratio
 
-        root_dir = Path(root_dir)
-        assert root_dir.is_dir(), f"With root_dir = {root_dir}"
-        self.image_files = list(root_dir.glob("**/*.jpg"))
+        self.augments = torch.nn.Sequential(
+            v2.RandomApply([affine_transforms], p=affine_augment_ratio),
+            v2.RandomApply([augment_transforms], p=augment_ratio),
+        )
+
+        self.image_files = []
+
+        for dir, target in [(with_board_root_dir, 1.0), (no_board_root_dir, 0.0)]:
+
+            dir = Path(dir)
+            assert dir.is_dir(), f"With root_dir = {dir}"
+            files = list(dir.glob("**/*.jpg"))
+            random.shuffle(files)
+
+            assert len(files) > 0
+            if len(self.image_files) != 0:
+                size_per_dir = min(len(self.image_files), len(files))
+                self.image_files = self.image_files[0:size_per_dir]
+                files = files[0:size_per_dir]
+
+            self.image_files.extend([(file, target) for file in files])
+
         random.shuffle(self.image_files)
+
         if max is not None:
             self.image_files = self.image_files[0 : min(len(self.image_files), max)]
 
@@ -74,7 +90,7 @@ class ChessBoardBBoxDataset(Dataset):
         return len(self.image_files)
 
     def __getitem__(self, idx):
-        file_path = self.image_files[idx]
+        file_path, target = self.image_files[idx]
 
         try:
             img = Image.open(file_path)
@@ -86,21 +102,9 @@ class ChessBoardBBoxDataset(Dataset):
         assert input_img.shape[1] == consts.BBOX_IMAGE_SIZE
         assert input_img.shape[2] == consts.BBOX_IMAGE_SIZE
 
-        center_x, center_y, width, height = [int(x) for x in file_path.stem.split("_")]
-
-        x1 = center_x - width / 2
-        y1 = center_y - height / 2
-        x2 = center_x + width / 2
-        y2 = center_y + height / 2
-
-        box = torch.tensor([x1, y1, x2, y2])
-
-        do_augment = self.augment_ratio > random.uniform(0, 1)
-
         while True:
 
-            if do_augment:
-                input_img = augment_transforms(input_img)
+            input_img = self.augments(input_img)
 
             if input_img.isnan().any():
                 print("WARNING: Found nan after augmentation. Trying again.")
@@ -109,34 +113,32 @@ class ChessBoardBBoxDataset(Dataset):
             input_img = default_transforms(input_img)
 
             if input_img.isnan().any():
-                print(
-                    f"WARNING: Found nan after default transform (do_augment = {do_augment}). Trying again."
-                )
+                print(f"WARNING: Found nan after default transform. Trying again.")
                 continue
             break
 
-        return (input_img, box, box_to_mask(box))
+        return (input_img, torch.tensor(target).unsqueeze(0))
 
 
 def test_data_set():
 
-    c = ChessBoardBBoxDataset(
-        root_dir="resources/generated_images/chessboards_bbox",
+    c = ExistenceDataset(
+        with_board_root_dir="resources/generated_images/chessboards_bbox",
+        no_board_root_dir="resources/generated_images/no_chessboards",
         augment_ratio=0.5,
         max=1000,
     )
 
     for i in range(0, len(c)):
-        img, target_box, target_mask = c[i]
+        img, target = c[i]
 
         assert not img.isnan().any()
+
+        print(target)
 
         img *= 255.0
         img += 128.0
         img = img.to(torch.uint8)
-        img = draw_bounding_boxes(img, target_box.unsqueeze(0), width=5, colors="red")
 
-        fig, (ax1, ax2) = plt.subplots(1, 2)
-        ax1.imshow((img.permute(1, 2, 0) - img.min()) / (img.max() - img.min()))
-        ax2.imshow(target_mask.squeeze(0))
+        plt.imshow((img.permute(1, 2, 0) - img.min()) / (img.max() - img.min()))
         plt.show()

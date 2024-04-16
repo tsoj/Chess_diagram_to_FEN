@@ -12,6 +12,7 @@ from src.bounding_box.model import ChessBoardBBox
 from src.fen_recognition.model import ChessRec
 from src.board_orientation.model import OrientationModel
 from src.board_image_rotation.model import ImageRotation
+from src.existence.model import ChessExistence
 import src.fen_recognition.dataset as fen_dataset
 import src.board_image_rotation.dataset as rotation_dataset
 
@@ -44,7 +45,7 @@ class SomeModel:
                 )
             )
             self.model.to(device)
-            self.model.eval()
+        self.model.eval()
         return self.model
 
     def set_model_path(self, model_path: str):
@@ -54,6 +55,10 @@ class SomeModel:
 
 script_dir = os.path.abspath(os.path.dirname(__file__))
 
+chess_existence = SomeModel(
+    ChessExistence,
+    script_dir + "/models/best_model_existence_0.998_2024-04-16-23-44-48.pth",
+)
 bbox_model = SomeModel(
     ChessBoardBBox,
     script_dir + "/models/best_model_bbox_0.958_2024-01-28-22-49-40.pth",
@@ -70,6 +75,21 @@ orientation_model = SomeModel(
     OrientationModel,
     script_dir + "/models/best_model_orientation_0.987_2024-02-04-17-34-05.pth",
 )
+
+
+@torch.no_grad()
+def check_for_chess_existence(img: Image.Image) -> bool:
+
+    img_tensor = common.to_rgb_tensor(img)
+    img_tensor = functional.resize(
+        img_tensor, [consts.BBOX_IMAGE_SIZE, consts.BBOX_IMAGE_SIZE]
+    )
+    img_tensor = img_tensor.to(device)
+    img_tensor = common.MinMaxMeanNormalization()(img_tensor)
+
+    output = chess_existence.get()(img_tensor.unsqueeze(0)).squeeze(0)
+
+    return output.cpu().item() > 0.5
 
 
 @torch.no_grad()
@@ -218,7 +238,7 @@ def get_fen(
     auto_rotate_image=True,
     mirror_when_180_rotation=False,
     auto_rotate_board=True,
-) -> FenResult:
+):
     """Takes an image and returns an FEN (Forsyth-Edwards Notation) string.
 
     Args:
@@ -232,12 +252,16 @@ def get_fen(
         perspective and rotate the board accordingly.
 
     Returns:
-        - `FenResult`: Returns a dataclass that contains the fields `fen`, `cropped_image`, `image_rotation_angle`, and `board_is_flipped`
+        - `FenResult | None`: Returns a dataclass that contains the fields `fen`, `cropped_image`, `image_rotation_angle`, and `board_is_flipped`.
+        Returns `None` if there is no chessboard detectable.
     """
 
-    result = FenResult()
-
     img = img.convert("RGB")
+
+    if not check_for_chess_existence(img):
+        return None
+
+    result = FenResult()
     result.cropped_image = crop_to_chessboard(img, max_num_tries=num_tries)
     if result.cropped_image is not None:
         result.image_rotation_angle = board_image_rotation(result.cropped_image)
@@ -301,8 +325,12 @@ def demo(root_dir: str, shuffle_files: bool):
 
         fen_result = get_fen(img)
 
-        if fen_result.fen is None:
+        if fen_result is None:
             print("Couldn't detect chessboard:", file_name)
+            continue
+
+        if fen_result.fen is None:
+            print("Couldn't detect FEN:", file_name)
             continue
 
         print(fen_result.fen)

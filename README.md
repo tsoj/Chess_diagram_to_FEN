@@ -46,12 +46,13 @@ Needs about **40 GB** disk space.
 python main.py generate fen
 
 # It is important to generate the fen data before
-# the bbox data, since the bbox data generation
+# the bbox and existence data, since the bbox data generation
 # relies on the fen training data
 
 pip install gdown
 ./download_website_screenshots.sh
 python main.py generate bbox
+python main.py generate existence
 
 ./download_lichess_games.sh
 ```
@@ -63,6 +64,7 @@ python main.py dataset bbox
 python main.py dataset fen
 python main.py dataset orientation
 python main.py dataset image_rotation
+python main.py dataset existence
 ```
 
 #### Train
@@ -72,6 +74,7 @@ python main.py train bbox
 python main.py train fen
 python main.py train orientation
 python main.py train image_rotation
+python main.py train existence
 ```
 
 #### Evaluate (optional)
