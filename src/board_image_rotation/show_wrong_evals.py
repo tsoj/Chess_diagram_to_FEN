@@ -8,7 +8,7 @@ from src.board_image_rotation.model import ImageRotation
 def show_wrong_image_rotations(model_path="models/best_model_image_rotation_0.996_2024-04-14-22-59-55.pth"):
 
     max_data = None
-    data_root_dir = "resources/generated_images/chessboards_fen"
+    data_root_dir = "resources/fen_images"
 
     board_image_set = dataset.BoardImageDataset(
         root_dir=data_root_dir,

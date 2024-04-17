@@ -39,7 +39,7 @@ TEST_ACC_FREQ = 200
 
 
 def train(
-    data_root_dir="resources/generated_images/chessboards_bbox",
+    data_root_dir="resources/chessboards_bbox_images/chessboards_bbox",
     outdir="models",
     batch_size=8,
     num_epochs=2,

@@ -62,7 +62,9 @@ class BoardImageDataset(Dataset):
 
         root_dir = Path(root_dir)
         assert root_dir.is_dir(), f"With root_dir = {root_dir}"
-        self.image_files = list(root_dir.glob("**/*.png"))
+        
+        self.image_files = common.glob_all_image_files_recursively(root_dir)
+
         random.shuffle(self.image_files)
         if max is not None:
             self.image_files = self.image_files[0 : min(len(self.image_files), max)]
@@ -106,7 +108,7 @@ class BoardImageDataset(Dataset):
 
 def test_data_set():
 
-    root_dir = "resources/generated_images/chessboards_fen"
+    root_dir = "resources/fen_images/generated_chessboards_fen"
 
     dataset = BoardImageDataset(root_dir, max=1000)
 

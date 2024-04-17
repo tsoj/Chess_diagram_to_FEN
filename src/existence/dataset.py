@@ -8,7 +8,7 @@ from PIL import Image
 from pathlib import Path
 
 from src.common import to_rgb_tensor, MinMaxMeanNormalization, AddGaussianNoise
-from src import consts
+from src import consts, common
 
 
 default_transforms = torch.nn.Sequential(
@@ -68,7 +68,7 @@ class ExistenceDataset(Dataset):
 
             dir = Path(dir)
             assert dir.is_dir(), f"With root_dir = {dir}"
-            files = list(dir.glob("**/*.jpg"))
+            files = common.glob_all_image_files_recursively(dir)
             random.shuffle(files)
 
             assert len(files) > 0
@@ -123,8 +123,8 @@ class ExistenceDataset(Dataset):
 def test_data_set():
 
     c = ExistenceDataset(
-        with_board_root_dir="resources/generated_images/chessboards_bbox",
-        no_board_root_dir="resources/generated_images/no_chessboards",
+        with_board_root_dir="resources/chessboards_bbox_images/chessboards_bbox",
+        no_board_root_dir="resources/chessboards_bbox_images/no_chessboards",
         augment_ratio=0.5,
         max=1000,
     )

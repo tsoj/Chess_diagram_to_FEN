@@ -9,8 +9,10 @@ model.tf
 images/chessboards
 images/tiles
 *.pth
-resources/random_website_screenshots
-resources/generated_images
+resources/test_images/kaggle-chess-positions-test
+resources/fen_images/kaggle-chess-positions-train
+resources/fen_images/generated_chessboards_fen
+resources/chessboards_bbox_images
 resources/website_screenshots
 resources/lichess_games
 Figure_fen_0.939.png

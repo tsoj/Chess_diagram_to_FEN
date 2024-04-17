@@ -8,7 +8,7 @@ from torchvision.utils import draw_bounding_boxes
 from PIL import Image
 from pathlib import Path
 
-from src.common import to_rgb_tensor, MinMaxMeanNormalization, AddGaussianNoise
+from src.common import to_rgb_tensor, MinMaxMeanNormalization, AddGaussianNoise, glob_all_image_files_recursively
 from src import consts
 
 
@@ -52,7 +52,6 @@ augment_transforms = torch.nn.Sequential(
 
 
 class ChessBoardBBoxDataset(Dataset):
-    """Chess board bounding box dataset."""
 
     def __init__(
         self, root_dir, augment_ratio=0.5, max=None, device=torch.device("cpu")
@@ -63,7 +62,7 @@ class ChessBoardBBoxDataset(Dataset):
 
         root_dir = Path(root_dir)
         assert root_dir.is_dir(), f"With root_dir = {root_dir}"
-        self.image_files = list(root_dir.glob("**/*.jpg"))
+        self.image_files = glob_all_image_files_recursively(root_dir)
         random.shuffle(self.image_files)
         if max is not None:
             self.image_files = self.image_files[0 : min(len(self.image_files), max)]
@@ -121,7 +120,7 @@ class ChessBoardBBoxDataset(Dataset):
 def test_data_set():
 
     c = ChessBoardBBoxDataset(
-        root_dir="resources/generated_images/chessboards_bbox",
+        root_dir="resources/chessboards_bbox_images/chessboards_bbox",
         augment_ratio=0.5,
         max=1000,
     )

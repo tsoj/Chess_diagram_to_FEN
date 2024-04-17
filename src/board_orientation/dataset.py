@@ -7,7 +7,6 @@ from src import common
 
 
 class ChessBoardOrientationDataset(Dataset):
-    """Chess board orientation dataset."""
 
     def __init__(self, pgn_file_name, rotate_probability=0.3, max=100000):
         self.board_list = []

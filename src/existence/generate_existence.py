@@ -5,7 +5,7 @@ import os
 from PIL import Image
 from tqdm import tqdm
 
-from src import consts
+from src import consts, common
 
 MIN_CROP_SIZE = consts.BOARD_PIXEL_WIDTH + 10
 MAX_CROP_SIZE = consts.BOARD_PIXEL_WIDTH * 4
@@ -14,7 +14,7 @@ TARGET_SIZE = consts.BOARD_PIXEL_WIDTH * 2
 
 
 def generate_existence_training_data(
-    outdir="resources/generated_images/no_chessboards",
+    outdir="resources/chessboards_bbox_images/no_chessboards",
     background_root_dir="resources/website_screenshots",
     num_total_out_positions=50000,
 ):
@@ -24,7 +24,7 @@ def generate_existence_training_data(
     assert (
         background_root_dir.is_dir()
     ), f"With background_root_dir = {background_root_dir}"
-    background_image_files = list(background_root_dir.glob("**/*.jpg"))
+    background_image_files = common.glob_all_image_files_recursively(background_root_dir)
     random.shuffle(background_image_files)
 
     if num_total_out_positions is not None:

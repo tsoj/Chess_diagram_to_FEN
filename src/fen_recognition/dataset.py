@@ -42,7 +42,6 @@ affine_transforms = v2.RandomAffine(
 
 
 class ChessBoardDataset(Dataset):
-    """Chess board dataset."""
 
     def __init__(
         self,
@@ -61,7 +60,19 @@ class ChessBoardDataset(Dataset):
 
         root_dir = Path(root_dir)
         assert root_dir.is_dir(), f"With root_dir = {root_dir}"
-        self.image_files = list(root_dir.glob("**/*.png"))
+
+        img_list = common.glob_all_image_files_recursively(root_dir)
+
+        self.image_files = []
+        for filename in img_list:
+
+            fen = common.normalize_fen(Path(filename).stem)
+
+            if fen is not None:
+                self.image_files.append(filename)
+            else:
+                print("WARNING: Couldn't detect ground truth FEN: " + str(filename))
+
         random.shuffle(self.image_files)
         if max is not None:
             self.image_files = self.image_files[0 : min(len(self.image_files), max)]
@@ -75,8 +86,7 @@ class ChessBoardDataset(Dataset):
         file_path = self.image_files[idx]
         fen = common.normalize_fen(file_path.stem)
 
-        if fen is None:
-            print("WARNING: Couldn't detect ground truth FEN: " + str(file_path))
+        assert fen is not None
 
         board = chess.Board(fen)
         try:
@@ -108,7 +118,7 @@ class ChessBoardDataset(Dataset):
 
 def test_data_set():
 
-    root_dir = "resources/generated_images/chessboards_fen"
+    root_dir = "resources/fen_images"
 
     c = ChessBoardDataset(root_dir, max=1000)
 

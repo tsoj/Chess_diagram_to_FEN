@@ -41,8 +41,8 @@ TEST_ACC_FREQ = 4000
 
 
 def train(
-    data_with_board_root_dir="resources/generated_images/chessboards_bbox",
-    data_no_board_root_dir="resources/generated_images/no_chessboards",
+    data_with_board_root_dir="resources/chessboards_bbox_images/chessboards_bbox",
+    data_no_board_root_dir="resources/chessboards_bbox_images/no_chessboards",
     outdir="models",
     total_steps=10_000,
     batch_size=8,

@@ -47,7 +47,7 @@ TEST_ACC_FREQ = 4000
 
 
 def train(
-    data_root_dir="resources/generated_images/chessboards_fen",
+    data_root_dir="resources/fen_images/",
     outdir="models",
     total_steps=600_000,  # can also be (significantly) smaller while still producing acceptable results
     batch_size=8,

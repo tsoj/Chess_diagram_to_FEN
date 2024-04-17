@@ -303,13 +303,7 @@ def demo(root_dir: str, shuffle_files: bool):
 
     path = Path(root_dir)
     if path.is_dir():
-        file_names = list(
-            (
-                p.resolve()
-                for p in Path(path).glob("**/*")
-                if p.suffix in {".png", ".jpeg", ".jpg"}
-            )
-        )
+        file_names = common.glob_all_image_files_recursively(path)
     else:
         file_names = [path]
 

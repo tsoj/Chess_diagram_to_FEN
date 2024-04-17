@@ -358,7 +358,7 @@ def random_board():
 
 def generate_fen_training_data(
     num_total_out_positions=300000,
-    outdir_root="resources/generated_images/chessboards_fen",
+    outdir_root="resources/fen_images/generated_chessboards_fen",
     max_files_per_folder=10000,
 ):
 

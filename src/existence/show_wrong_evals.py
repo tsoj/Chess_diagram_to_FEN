@@ -10,8 +10,8 @@ def show_wrong_existence(model_path="models/best_model_existence_0.998_2024-04-1
     max_data = None
 
     board_image_set = dataset.ExistenceDataset(
-        with_board_root_dir="resources/generated_images/chessboards_bbox",
-        no_board_root_dir="resources/generated_images/no_chessboards",
+        with_board_root_dir="resources/chessboards_bbox_images/chessboards_bbox",
+        no_board_root_dir="resources/chessboards_bbox_images/no_chessboards",
         augment_ratio=0.8,
         affine_augment_ratio=0.8,
         max=max_data,

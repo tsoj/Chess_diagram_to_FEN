@@ -6,6 +6,7 @@ from io import BytesIO
 from cairosvg import svg2png
 import chess.svg
 import re
+from pathlib import Path
 
 
 def to_rgb_tensor(img):
@@ -189,3 +190,13 @@ def normalize_fen(pseudo_fen: str) -> str:
         return chess.Board(fen).fen()
     except ValueError:
         return None
+
+
+def glob_all_image_files_recursively(dir) -> list:
+    return list(
+        (
+            p.resolve()
+            for p in Path(dir).glob("**/*")
+            if p.suffix in {".png", ".jpeg", ".jpg"}
+        )
+    )
