@@ -57,7 +57,7 @@ python main.py generate existence
 ./download_lichess_games.sh
 ```
 
-Additionally you can download [this Kaggle dataset](https://www.kaggle.com/datasets/koryakinp/chess-positions) and place it into `resources/fen_images` to further augment the training data for FEN detection.
+Additionally you can download [this Kaggle dataset](https://www.kaggle.com/datasets/koryakinp/chess-positions), unzip it, and place it into `resources/fen_images` to further augment the training data for FEN detection.
 
 #### Review datasets (optional)
 
