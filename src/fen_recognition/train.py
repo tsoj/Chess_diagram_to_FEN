@@ -53,7 +53,9 @@ def train(
     batch_size=8,
     max_lr=0.001,
     train_test_split=0.97,
+    lr_schedule_pct_start=0.3,
     max_data=None,
+    checkpoint=None
 ):
     start_time_string = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     print(start_time_string)
@@ -82,12 +84,15 @@ def train(
     )
 
     model = ChessRec()
+    if checkpoint is not None:
+        model.load_state_dict(torch.load(checkpoint, map_location=torch.device("cpu")))
+        print("Using checkpoint:", checkpoint)
     model.to(device)
 
     criterion = nn.MSELoss()
     optimizer = optim.AdamW(model.parameters())
     scheduler = optim.lr_scheduler.OneCycleLR(
-        optimizer, max_lr=max_lr, total_steps=total_steps
+        optimizer, max_lr=max_lr, total_steps=total_steps, pct_start=lr_schedule_pct_start
     )
 
     test_loss_list = []

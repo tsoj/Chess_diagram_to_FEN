@@ -69,7 +69,7 @@ image_rotation_model = SomeModel(
 )
 fen_model = SomeModel(
     ChessRec,
-    script_dir + "/models/best_model_fen_0.953_2024-02-03-13-49-31.pth",
+    script_dir + "/models/best_model_fen_0.943_2024-04-19-09-31-24.pth",
 )
 orientation_model = SomeModel(
     OrientationModel,
@@ -321,31 +321,34 @@ def demo(root_dir: str, shuffle_files: bool):
 
         if fen_result is None:
             print("Couldn't detect chessboard:", file_name)
-            continue
 
-        if fen_result.fen is None:
+        elif fen_result.fen is None:
             print("Couldn't detect FEN:", file_name)
-            continue
-
-        print(fen_result.fen)
+        else:
+            print(fen_result.fen)
 
         true_fen = common.normalize_fen(Path(file_name).stem)
         if true_fen is None:
             print(f"WARNING: Couldn't find ground truth FEN")
         else:
-            if fen_result.fen == true_fen:
+            if fen_result is not None and fen_result.fen == true_fen:
                 print("Correct")
             else:
                 print(true_fen)
                 print("WRONG")
 
-        fen_img = common.get_image(chess.Board(fen_result.fen), width=512, height=512)
-
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(16, 8))
 
         ax1.imshow(img)
-        ax2.imshow(fen_result.cropped_image)
-        ax3.imshow(fen_img)
+        if fen_result is not None:
+            if fen_result.cropped_image is not None:
+                ax2.imshow(fen_result.cropped_image)
+            if fen_result.fen is not None:
+                fen_img = common.get_image(
+                    chess.Board(fen_result.fen), width=512, height=512
+                )
+                ax3.imshow(fen_img)
+
         ax1.axis("off")
         ax2.axis("off")
         ax3.axis("off")

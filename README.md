@@ -34,7 +34,7 @@ print(result.fen)
 
 Or use the demo program:
 ```shell
-python chess_diagram_to_fen.py --shuffle_files --dir resources/test_images
+python chess_diagram_to_fen.py --dir resources/test_images/real_use_cases/
 ```
 
 
@@ -56,6 +56,8 @@ python main.py generate existence
 
 ./download_lichess_games.sh
 ```
+
+Additionally you can download [this Kaggle dataset](https://www.kaggle.com/datasets/koryakinp/chess-positions) and place it into `resources/fen_images` to further augment the training data for FEN detection.
 
 #### Review datasets (optional)
 

@@ -10,15 +10,15 @@ from src.fen_recognition import dataset
 from src.fen_recognition.model import ChessRec
 
 
-def show_wrong_fens(model_path="models/best_model_fen_0.953_2024-02-03-13-49-31.pth"):
+def show_wrong_fens(model_path="models/best_model_fen_0.943_2024-04-19-09-31-24.pth"):#"models/best_model_fen_0.953_2024-02-03-13-49-31.pth"):
 
     max_data = None
-    data_root_dir = "resources/fen_images"
+    data_root_dir = "resources/fen_images"#test_images/kaggle-chess-positions-test"
 
     chess_board_set = dataset.ChessBoardDataset(
         root_dir=data_root_dir,
-        augment_ratio=0.5,
-        affine_augment_ratio=0.8,
+        augment_ratio=0.0,#0.5,
+        affine_augment_ratio=0.0,#0.8,
         max=max_data
     )
 
