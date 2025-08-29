@@ -121,23 +121,24 @@ def load_dense_model(device: str = "mps"):
 @torch.no_grad()
 def predict_board_dense(model: torch.nn.Module, board_rgb_norm_chw: torch.Tensor, device: str = "mps"):
     """
-    board_rgb_norm_chw: Tensor (1,3,H,W), reeds RGB genormaliseerd naar de mean/std van het project.
+    board_rgb_norm_chw: Tensor (1,3,H,W), reeds RGB genormaliseerd naar [0,1] + std/mean.
     Verwacht H=W=512 voor dit model.
     Return: logits_grid (8, 8, 13) — ruwe 13-klassen logits per cel.
     """
     dev = "mps" if (device == "mps" and torch.backends.mps.is_available()) else "cpu"
     x = board_rgb_norm_chw.to(dev, non_blocking=True)
-    y = model(x)                     # (1, 3, 512, 13) bij 512×512
-    # gemiddeld over head-dim (3)
+    y = model(x)                     # (1, 3, 512, 13)
+
+    # 1) heads middelen
     y = y.mean(dim=1)                # (1, 512, 13)
 
-    # Downsample van 512 "rijnoten" naar 8 rijen (gemiddelde per blok van 64)
-    y_rows8 = y.view(1, 8, 64, 13).mean(dim=2)   # (1, 8, 13)
+    # 2) 512 = 8 * 64 → per rij 64 posities (kolomresolutie)
+    y = y.view(1, 8, 64, 13)         # (1, 8, 64, 13)
 
-    # Nu nog 8 kolommen maken. Eenvoudige benadering: neem per rij 8 segmenten
-    # en gebruik dezelfde rijlogits voor die segmenten (dit is een placeholder).
-    # In een ideale wereld komt het model ook met kolom-informatie; als dat later beschikbaar is,
-    # vervangen we dit door echte kolomlogits.
-    logits_grid = y_rows8.unsqueeze(2).expand(-1, 8, 8, 13)  # (1,8,8,13)
-    return logits_grid[0]  # (8,8,13)
+    # 3) kolommen “tegelgemiddeld”: 64 → 8 via blokken van 8
+    #    (elke schaaktegel ≈ 8 kolompixels breed op deze schaal)
+    y = y.view(1, 8, 8, 8, 13).mean(dim=3)   # (1, 8, 8, 13)
+
+    return y[0]  # (8, 8, 13)
+
 
