@@ -44,12 +44,21 @@ def process_board_bgr(
         return fen_from_grid(labels)
 
     # Tiles-pad (bestaande flow met batching + AMP)
-    board_rgb = normalize_inplace_bgr_to_rgb01(img_bgr)      # (H,W,3) float32
-    tiles = crop_tiles_vectorized(board_rgb, grid=8)         # (8,8,tH,tW,3)
-    batch = tiles_to_batch(tiles).astype(np.float32)         # (64,3,tH,tW)
+    board_rgb = normalize_inplace_bgr_to_rgb01(img_bgr)
+    tiles = crop_tiles_vectorized(board_rgb, grid=8)
+    batch = tiles_to_batch(tiles).astype(np.float32)
     logits = batch_tiles_mps(model, batch, device=device, use_amp=use_amp)  # (64, n_cls)
+
+    n_cls = int(logits.shape[-1])
+    if n_cls != 13:
+        raise RuntimeError(
+            f"Tile-model gaf {n_cls} klassen i.p.v. 13. "
+            f"Gebruik --dense óf voeg de 512→13 classifier-head + weights toe."
+        )
+
     labels = logits.argmax(dim=-1).view(8, 8).cpu().numpy()
     return fen_from_grid(labels)
+
 
 
 def main():

@@ -83,12 +83,40 @@ def predict_tiles(model: torch.nn.Module, tiles_nchw, device: str = "mps"):
 
 
 
+def _find_dense_fen_weights() -> Path | None:
+    # prefer an explicit “fen” model in models/
+    for p in (REPO_ROOT / "models").glob("best_model_fen*.pth"):
+        return p
+    # fallbacks if someone renamed things
+    for folder in ["models", "weights", "checkpoints"]:
+        d = REPO_ROOT / folder
+        if d.is_dir():
+            for pat in ("*fen*.pth", "*fen*.pt"):
+                m = next(d.glob(pat), None)
+                if m:
+                    return m
+    return None
+
 def load_dense_model(device: str = "mps"):
     from fen_recognition.model import get_dense_model
     dev = "mps" if (device == "mps" and torch.backends.mps.is_available()) else "cpu"
     m = get_dense_model().eval().to(dev)
-    print(f"✅ Dense-model geladen op device={dev}")
+
+    w = _find_dense_fen_weights()
+    if w is not None:
+        state = torch.load(w, map_location="cpu")
+        # Some repos wrap state under "model"/"state_dict"
+        if isinstance(state, dict) and "state_dict" in state:
+            state = state["state_dict"]
+        missing, unexpected = m.load_state_dict(state, strict=False)
+        if missing or unexpected:
+            print(f"⚠️ dense load_state_dict: missing={len(missing)} unexpected={len(unexpected)}  | {w.name}")
+        print(f"✅ Dense-model geladen op device={dev}  | weights='{w.name}'")
+    else:
+        print(f"⚠️ Geen FEN-weights gevonden voor dense-model; draai je nu met random init.")
+
     return m, dev
+
 
 @torch.no_grad()
 def predict_board_dense(model: torch.nn.Module, board_rgb_norm_chw: torch.Tensor, device: str = "mps"):
