@@ -24,3 +24,4 @@ models/*.png
 !models/best_model_image_rotation_0.996_2024-04-14-22-59-55.pth
 !models/best_model_existence_0.998_2024-04-16-23-44-48.pth
 !models/best_model_fen_0.943_2024-04-19-09-31-24.pth
+.venv/

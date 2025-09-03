@@ -8,79 +8,43 @@ import cv2
 import torch
 
 from speedkit.io import imread_fast, normalize_inplace_bgr_to_rgb01
-from speedkit.tiles import crop_tiles_vectorized, tiles_to_batch
-from speedkit.torch_fast import batch_tiles_mps
 from speedkit.fen import fen_from_grid
-from speedkit.project_model_loader import (
-    load_project_model,        # tile-model loader
-    load_dense_model,          # dense-model loader (single-shot)
-    predict_board_dense,       # (1,3,512,512) -> (8,8,13) logits
-)
+from speedkit.project_model_loader import load_dense_model, predict_board_dense
+from speedkit.orient import choose_best_orientation
 
-def process_board_bgr(
-    img_bgr,
-    device="mps",
-    use_amp=True,
-    dense=False,
-    model=None,
-    dense_model=None,
-):
+
+def process_board_bgr_dense(img_bgr, device="mps", dense_model=None):
     """
-    Verwerkt één bordafbeelding tot FEN.
-
-    - dense=False  → tiles-pad (snijden -> batch -> model(64,3,h,w))
-    - dense=True   → single-shot dense model op 512x512
+    Dense single-shot pad: hele board (512x512) -> (8,8,13) -> FEN (met oriëntatiecheck).
     """
-    if dense:
-        # 1) normaliseer (BGR->RGB [0,1] + standaardisatie)
-        rgb = normalize_inplace_bgr_to_rgb01(img_bgr)  # (H,W,3) float32
-        # 2) resize naar 512x512 (zoals get_dense_model werkt)
-        rgb512 = cv2.resize(np.ascontiguousarray(rgb), (512, 512), interpolation=cv2.INTER_AREA)
-        # 3) naar torch CHW, batch=1
-        x = torch.from_numpy(rgb512.transpose(2, 0, 1)).unsqueeze(0).contiguous()
-        # 4) dense predict → (8,8,13)
-        logits_grid = predict_board_dense(dense_model, x, device=device)   # Tensor (8,8,13)
-        labels = logits_grid.argmax(dim=-1).cpu().numpy()                  # (8,8)
-        return fen_from_grid(labels)
+    # BGR uint8 -> RGB [0,1] float32
+    rgb = normalize_inplace_bgr_to_rgb01(img_bgr)
+    # Resize naar 512x512 (verwacht door get_dense_model)
+    rgb512 = cv2.resize(np.ascontiguousarray(rgb), (512, 512), interpolation=cv2.INTER_AREA)
+    # CHW + batch
+    x = torch.from_numpy(rgb512.transpose(2, 0, 1)).unsqueeze(0).float().to(device)
 
-    # Tiles-pad (bestaande flow met batching + AMP)
-    board_rgb = normalize_inplace_bgr_to_rgb01(img_bgr)
-    tiles = crop_tiles_vectorized(board_rgb, grid=8)
-    batch = tiles_to_batch(tiles).astype(np.float32)
-    logits = batch_tiles_mps(model, batch, device=device, use_amp=use_amp)  # (64, n_cls)
-
-    n_cls = int(logits.shape[-1])
-    if n_cls != 13:
-        raise RuntimeError(
-            f"Tile-model gaf {n_cls} klassen i.p.v. 13. "
-            f"Gebruik --dense óf voeg de 512→13 classifier-head + weights toe."
-        )
-
-    labels = logits.argmax(dim=-1).view(8, 8).cpu().numpy()
-    return fen_from_grid(labels)
-
+    # logits (8,8,13)
+    logits_grid = predict_board_dense(dense_model, x, device=device)
+    labels = logits_grid.argmax(dim=-1).cpu().numpy()   # (8,8)
+    # oriëntatie + legaliteit
+    name, labels_best, fen_rows, score = choose_best_orientation(labels)
+    return fen_rows
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Fastpath demo: tiles (AMP) óf dense single-shot (512x512)")
+    ap = argparse.ArgumentParser(description="Fastpath demo: dense single-shot (512x512)")
     ap.add_argument("--input", nargs="*", help="Pad(den) naar bord-afbeeldingen of mappen (png/jpg/jpeg).")
     ap.add_argument("--dummy", type=int, default=0, help="Aantal dummy-borden genereren i.p.v. echte afbeeldingen.")
     ap.add_argument("--device", default="mps", choices=["mps", "cpu"], help="Device voor inference.")
     ap.add_argument("--runs", type=int, default=1, help="Aantal herhalingen voor timing (gemiddelde p50/p90).")
-    ap.add_argument("--amp", action="store_true", help="Gebruik AMP fp16 (alleen tiles-pad op MPS).")
-    ap.add_argument("--dense", action="store_true", help="Gebruik dense single-shot model (512x512) i.p.v. tiles.")
     args = ap.parse_args()
 
-    # Device kiezen
+    # Device
     device = args.device if (args.device == "mps" and torch.backends.mps.is_available()) else "cpu"
 
-    # Model(s) laden
-    model = None
-    dense_model = None
-    if args.dense:
-        dense_model, device = load_dense_model(device=args.device)
-    else:
-        model, device = load_project_model(device=args.device)
+    # Alleen dense-pad
+    dense_model, device = load_dense_model(device=args.device)
 
     # Input verzamelen
     boards_paths = []
@@ -110,14 +74,7 @@ def main():
                 img_bgr = (np.random.rand(512, 512, 3) * 255).astype(np.uint8)
             else:
                 img_bgr = imread_fast(b)
-            fen = process_board_bgr(
-                img_bgr,
-                device=device,
-                use_amp=args.amp,
-                dense=args.dense,
-                model=model,
-                dense_model=dense_model,
-            )
+            fen = process_board_bgr_dense(img_bgr, device=device, dense_model=dense_model)
             fens.append(fen)
         t1 = time.perf_counter()
         times.append((t1 - t0) / len(boards_paths))

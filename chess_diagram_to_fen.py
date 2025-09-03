@@ -20,7 +20,16 @@ from src.bounding_box.inference import get_bbox
 from src import consts, common
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.backends.mps.is_available():
+    device = torch.device("mps")
+    print("Using MPS")
+elif torch.cuda.is_available():
+    device = torch.device("cuda")
+    print("Using CUDA")
+else:
+    device = torch.device("cpu")
+    print("Using CPU")
+
 
 
 class SomeModel:
@@ -45,6 +54,7 @@ class SomeModel:
                 )
             )
             self.model.to(device)
+            print(f"✅ Model geladen op {device}")
         self.model.eval()
         return self.model
 
