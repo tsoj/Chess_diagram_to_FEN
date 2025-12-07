@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
   "matplotlib ~= 3.8.2",
-  "scikit-image ~= 0.22.0",
+  "scikit-image ~= 0.25.2",
   "tqdm ~= 4.66.1",
   "python-chess ~= 1.999",
   "cairosvg ~= 2.7.1",
