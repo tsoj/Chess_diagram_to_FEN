@@ -12,7 +12,7 @@ from tqdm.auto import tqdm
 
 from src import common, consts
 from src.fen_recognition import dataset
-from src.fen_recognition.model import BoardRec
+from src.fen_recognition.model import AblationConfig, BoardRec
 from src.games import get_game
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -58,6 +58,7 @@ def train(
     test_set_size=2000,
     checkpoint=None,
     tile_size: int = consts.DEFAULT_TILE_SIZE,
+    ablation_config: AblationConfig | None = None,
 ):
     spec = get_game(game)
 
@@ -86,7 +87,7 @@ def train(
     )
     test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False, drop_last=True)
 
-    model = BoardRec(game=spec.key, tile_size=tile_size)
+    model = BoardRec(game=spec.key, tile_size=tile_size, ablation_config=ablation_config)
     if checkpoint is not None:
         model.load_state_dict(torch.load(checkpoint, map_location=torch.device("cpu")))
         print("Using checkpoint:", checkpoint)
@@ -162,3 +163,10 @@ def train(
     plt.ylabel("Accuracy")
     plt.legend()
     plt.savefig(file_name + ".png", dpi=250)
+
+    return {
+        "best_acc": best_acc,
+        "test_acc_list": test_acc_list,
+        "test_loss_list": test_loss_list,
+        "model_path": file_name,
+    }

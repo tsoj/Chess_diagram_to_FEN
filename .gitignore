@@ -32,3 +32,4 @@ models/**/*.png
 /models_old
 /other_piece_repos
 /models_backup_*_*/
+/ablation_results
