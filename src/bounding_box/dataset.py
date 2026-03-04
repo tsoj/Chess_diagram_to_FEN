@@ -1,9 +1,7 @@
 import random
 
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 import torch
-from PIL import Image, ImageDraw
 from torch.utils.data import IterableDataset
 from torchvision.transforms import v2
 
@@ -11,9 +9,22 @@ from src import consts
 from src.bounding_box.generate_chessboards_bbox import BboxGenerator
 from src.common import AddGaussianNoise, to_rgb_tensor
 
+default_transforms = torch.nn.Sequential(
+    v2.ToDtype(torch.float32),
+    v2.Resize(
+        size=(consts.BBOX_IMAGE_SIZE, consts.BBOX_IMAGE_SIZE),
+        interpolation=v2.InterpolationMode.BICUBIC,
+    ),
+    v2.ClampBoundingBoxes(),
+)
+
 augment_transforms = torch.nn.Sequential(
+    v2.RandomApply([v2.RandomAffine(degrees=1.0, shear=1.0)], p=0.3),
     v2.RandomInvert(p=0.1),
     v2.RandomApply([AddGaussianNoise(std=0.1, scale_to_input_range=True)], p=0.4),
+    v2.RandomApply(
+        [v2.ElasticTransform(alpha=30.0), v2.ElasticTransform(alpha=40.0)], p=0.4
+    ),
     v2.RandomGrayscale(p=0.4),
     v2.RandomPosterize(bits=2, p=0.2),
     v2.RandomApply(
@@ -27,31 +38,18 @@ augment_transforms = torch.nn.Sequential(
 
 
 def _normalize_to_01(img):
-    """Normalize image to [0, 1] range."""
+    """Normalize image to [0, 1] range for Faster R-CNN input."""
     mn, mx = img.min(), img.max()
     if mn >= mx:
         return torch.zeros_like(img)
     return (img - mn) / (mx - mn)
 
 
-def corners_to_mask(corners_flat: torch.Tensor) -> torch.Tensor:
-    """Convert normalized [8] corner coords to a filled polygon mask [1, H, W]."""
-    s = consts.BBOX_IMAGE_SIZE
-    # corners_flat: [tl_x, tl_y, tr_x, tr_y, br_x, br_y, bl_x, bl_y] in [0,1]
-    poly_pts = [(corners_flat[i].item() * s, corners_flat[i + 1].item() * s)
-                for i in range(0, 8, 2)]
-    mask_img = Image.new("L", (s, s), 0)
-    ImageDraw.Draw(mask_img).polygon(poly_pts, fill=255)
-    mask = torch.frombuffer(bytearray(mask_img.tobytes()), dtype=torch.uint8)
-    return (mask.reshape(1, s, s).float() / 255.0)
-
-
 def collate_fn(batch):
-    """Stack images, corners, and masks into batched tensors."""
-    images = torch.stack([item[0] for item in batch])
-    corners = torch.stack([item[1] for item in batch])
-    masks = torch.stack([item[2] for item in batch])
-    return images, corners, masks
+    """Custom collate for Faster R-CNN: returns list of images and list of targets."""
+    images = [item[0] for item in batch]
+    targets = [item[1] for item in batch]
+    return images, targets
 
 
 class GenerativeBboxDataset(IterableDataset):
@@ -65,8 +63,13 @@ class GenerativeBboxDataset(IterableDataset):
 
     def __iter__(self):
         while True:
-            image, corners = self.generator.generate_one()
+            image, (center_x, center_y, width, height) = self.generator.generate_one()
             input_img = to_rgb_tensor(image)
+
+            x1 = center_x - width / 2
+            y1 = center_y - height / 2
+            x2 = center_x + width / 2
+            y2 = center_y + height / 2
 
             do_augment = self.augment_ratio > random.uniform(0, 1)
 
@@ -89,26 +92,27 @@ class GenerativeBboxDataset(IterableDataset):
 
             input_img = _normalize_to_01(input_img)
 
-            corners_flat = torch.tensor(
-                [c for pt in corners for c in pt], dtype=torch.float32
-            )
-            mask = corners_to_mask(corners_flat)
+            box = torch.tensor([[x1, y1, x2, y2]], dtype=torch.float32)
+            target = {
+                "boxes": box,
+                "labels": torch.tensor([1], dtype=torch.int64),
+            }
 
-            yield input_img, corners_flat, mask
+            yield input_img, target
 
 
 def generate_fixed_test_set(
     game: str,
     size: int = 500,
     seed: int = 42,
-) -> list[tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+) -> list[tuple[torch.Tensor, dict]]:
     rng_state = random.getstate()
     random.seed(seed)
 
     generator = BboxGenerator(game)
     data = []
     for _ in range(size):
-        image, corners = generator.generate_one()
+        image, (center_x, center_y, width, height) = generator.generate_one()
         input_img = to_rgb_tensor(image)
         input_img = v2.ToDtype(torch.float32)(input_img)
         input_img = v2.Resize(
@@ -117,12 +121,17 @@ def generate_fixed_test_set(
         )(input_img)
         input_img = _normalize_to_01(input_img)
 
-        corners_flat = torch.tensor(
-            [c for pt in corners for c in pt], dtype=torch.float32
-        )
-        mask = corners_to_mask(corners_flat)
+        x1 = center_x - width / 2
+        y1 = center_y - height / 2
+        x2 = center_x + width / 2
+        y2 = center_y + height / 2
+        box = torch.tensor([[x1, y1, x2, y2]], dtype=torch.float32)
+        target = {
+            "boxes": box,
+            "labels": torch.tensor([1], dtype=torch.int64),
+        }
 
-        data.append((input_img, corners_flat, mask))
+        data.append((input_img, target))
 
     random.setstate(rng_state)
     return data
@@ -131,24 +140,22 @@ def generate_fixed_test_set(
 def test_data_set(game: str, size: int = 1000):
     ds = GenerativeBboxDataset(game=game, augment_ratio=0.5)
 
-    for i, (img, corners, mask) in enumerate(ds):
+    for i, (img, target) in enumerate(ds):
         if i >= size:
             break
         assert not img.isnan().any()
 
-        fig, (ax1, ax2) = plt.subplots(1, 2)
+        fig, ax1 = plt.subplots(1, 1)
         ax1.imshow(img.permute(1, 2, 0))
-
-        c = corners * consts.BBOX_IMAGE_SIZE
-        poly_pts = [(c[i].item(), c[i + 1].item()) for i in range(0, 8, 2)]
-        polygon = patches.Polygon(
-            poly_pts,
-            closed=True,
+        x1, y1, x2, y2 = target["boxes"].squeeze(0).tolist()
+        rect = plt.Rectangle(
+            (x1, y1),
+            x2 - x1,
+            y2 - y1,
             linewidth=2,
             edgecolor=(1.0, 0.0, 0.0, 0.8),
             facecolor=(1.0, 0.0, 0.0, 0.1),
             linestyle="--",
         )
-        ax1.add_patch(polygon)
-        ax2.imshow(mask.squeeze(0), cmap="gray")
+        ax1.add_patch(rect)
         plt.show()

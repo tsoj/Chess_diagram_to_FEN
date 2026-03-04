@@ -14,8 +14,8 @@ import src.fen_recognition.dataset as fen_dataset
 from src import common, consts
 from src.board_image_rotation.model import ImageRotation
 from src.board_orientation.model import OrientationModel
-from src.bounding_box.inference import get_quad
-from src.bounding_box.model import BoardQuad
+from src.bounding_box.inference import get_bbox
+from src.bounding_box.model import BoardBBox
 from src.existence.model import BoardExistence
 from src.fen_recognition.model import BoardRec
 from src.games import GAMES, get_game
@@ -92,9 +92,9 @@ def _get_models(game: str) -> _GameModels:
                 name=f"{model_dir}best_model_existence_*.pth",
             ),
             bbox=SomeModel(
-                BoardQuad,
-                _find_latest_model(game, "best_model_quad_*.pth", "best_model_bbox_*.pth"),
-                name=f"{model_dir}best_model_quad_*.pth",
+                BoardBBox,
+                _find_latest_model(game, "best_model_bbox_*.pth"),
+                name=f"{model_dir}best_model_bbox_*.pth",
             ),
             image_rotation=SomeModel(
                 ImageRotation,
@@ -132,37 +132,8 @@ def check_for_board_existence(img: Image.Image, game: str) -> bool:
     return output.cpu().item() > 0.5
 
 
-def _perspective_warp(
-    img: Image.Image, corners_px: torch.Tensor, output_size: int
-) -> Image.Image:
-    """Warp img so that the quad defined by corners_px maps to a square.
-
-    corners_px: [4, 2] tensor of (x, y) pixel coords in img space.
-    Corner order: TL, TR, BR, BL.
-    """
-    import numpy as np
-    from skimage.transform import ProjectiveTransform
-
-    dst = np.array(
-        [(0, 0), (output_size, 0), (output_size, output_size), (0, output_size)],
-        dtype=np.float64,
-    )
-    src = np.array(corners_px.tolist(), dtype=np.float64)
-
-    t = ProjectiveTransform.from_estimate(dst, src)
-
-    coeffs = t.params.flatten()[:8]
-    warped = img.transform(
-        (output_size, output_size),
-        Image.PERSPECTIVE,
-        coeffs.tolist(),
-        Image.BICUBIC,
-    )
-    return warped
-
-
 @torch.no_grad()
-def warp_to_board(img: Image.Image, game: str, max_num_tries=10) -> Image.Image:
+def crop_to_board(img: Image.Image, game: str, max_num_tries=10) -> Image.Image:
 
     pad_factor = 0.05
     pad_x = img.width * pad_factor
@@ -180,52 +151,46 @@ def warp_to_board(img: Image.Image, game: str, max_num_tries=10) -> Image.Image:
         img_tensor = functional.resize(
             img_tensor, [consts.BBOX_IMAGE_SIZE, consts.BBOX_IMAGE_SIZE]
         )
+        # Normalize to [0, 1] for Faster R-CNN
         mn, mx = img_tensor.min(), img_tensor.max()
         if mx > mn:
             img_tensor = (img_tensor - mn) / (mx - mn)
         else:
             img_tensor = torch.zeros_like(img_tensor)
 
-        corners = get_quad(bbox_model.get(), img_tensor)
-        if corners is None:
+        bbox = get_bbox(bbox_model.get(), img_tensor)
+        if bbox is None:
             return None
 
-        # Scale corners from BBOX_IMAGE_SIZE space to original image space
+        x1, y1, x2, y2 = bbox
         x_factor = img.width / consts.BBOX_IMAGE_SIZE
         y_factor = img.height / consts.BBOX_IMAGE_SIZE
-        corners_px = corners.clone()
-        corners_px[:, 0] *= x_factor
-        corners_px[:, 1] *= y_factor
+        x1 *= x_factor
+        x2 *= x_factor
+        y1 *= y_factor
+        y2 *= y_factor
 
-        # Compute bounding box of quad
-        xs = corners_px[:, 0]
-        ys = corners_px[:, 1]
-        x1, x2 = xs.min().item(), xs.max().item()
-        y1, y2 = ys.min().item(), ys.max().item()
-        quad_w = x2 - x1
-        quad_h = y2 - y1
+        x1 = int(x1.clamp(0, img.width - 1))
+        x2 = int(x2.clamp(0, img.width - 1))
+        y1 = int(y1.clamp(0, img.height - 1))
+        y2 = int(y2.clamp(0, img.height - 1))
 
-        # Accept if quad is big relative to image
-        if quad_w / img.width > 0.7 and quad_h / img.height > 0.7:
-            # Compute output size from average side lengths
-            side_lengths = []
-            for i in range(4):
-                p1 = corners_px[i]
-                p2 = corners_px[(i + 1) % 4]
-                side_lengths.append((p2 - p1).norm().item())
-            avg_side = sum(side_lengths) / len(side_lengths)
-            output_size = max(32, int(avg_side))
-            return _perspective_warp(img, corners_px, output_size)
+        new_width = x2 - x1
+        new_height = y2 - y1
 
-        # Crop closer to the quad and retry
-        x_addition = quad_w * 0.1
-        y_addition = quad_h * 0.1
-        crop_x1 = int(max(x1 - x_addition, 0))
-        crop_y1 = int(max(y1 - y_addition, 0))
-        crop_x2 = int(min(x2 + x_addition, img.width))
-        crop_y2 = int(min(y2 + y_addition, img.height))
+        # We only accept the bounding box if it is relatively big compared to the entire image.
+        # Otherwise we try again by cropping the image a little closer to the estimated true bbox
+        if new_width / img.width > 0.7 and new_height / img.height > 0.7:
+            return img.crop((x1, y1, x2, y2))
 
-        img = img.crop((crop_x1, crop_y1, crop_x2, crop_y2))
+        x_addition = new_width * 0.1
+        y_addition = new_height * 0.1
+        x1 = max(x1 - x_addition, 0)
+        x2 = min(x2 + x_addition, img.width)
+        y1 = max(y1 - y_addition, 0)
+        y2 = min(y2 + y_addition, img.height)
+
+        img = img.crop((x1, y1, x2, y2))
 
     return None
 
@@ -339,7 +304,7 @@ def get_fen(
         return None
 
     result = FenResult()
-    result.cropped_image = warp_to_board(img, spec.key, max_num_tries=num_tries)
+    result.cropped_image = crop_to_board(img, spec.key, max_num_tries=num_tries)
     if result.cropped_image is not None:
         result.image_rotation_angle = board_image_rotation(
             result.cropped_image, spec.key

@@ -1,19 +1,25 @@
 import torch.nn as nn
-from torchvision.models.segmentation import lraspp_mobilenet_v3_large
-from torchvision.models.segmentation.lraspp import LRASPPHead
+
+from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
 
-class BoardQuad(nn.Module):
+class BoardBBox(nn.Module):
     def __init__(self):
-        super(BoardQuad, self).__init__()
+        super(BoardBBox, self).__init__()
 
-        self.model = lraspp_mobilenet_v3_large(weights="DEFAULT")
-        self.model.classifier = LRASPPHead(40, 960, 1, 128)
+        self.model = fasterrcnn_mobilenet_v3_large_fpn(
+            weights="DEFAULT",
+            box_detections_per_img=1,
+        )
+        # Replace head for single-class detection (background + chessboard)
+        in_features = self.model.roi_heads.box_predictor.cls_score.in_features
+        self.model.roi_heads.box_predictor = FastRCNNPredictor(in_features, 2)
 
-    def forward(self, x):
-        return self.model(x)["out"]  # [B, 1, H, W] raw logits
+    def forward(self, images, targets=None):
+        return self.model(images, targets)
 
 
 if __name__ == "__main__":
-    model = BoardQuad()
+    model = BoardBBox()
     print(model)
